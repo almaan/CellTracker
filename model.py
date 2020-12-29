@@ -1,47 +1,48 @@
 #!/usr/bin/env python3
 
 import numpy as np
-from typing import List,Dict,Optional,Tuple,Union
-from copy import deepcopy
-from operator import attrgetter,itemgetter
-
-from numbers import Number
-
 from scipy.stats import mode as get_mode
 
 
-class Counter:
-    def __init__(self,
-                val = 0,
-                )->None:
+from typing import List,Dict,Optional,Tuple,Union
+from numbers import Number
 
-        self.val = val
+from operator import attrgetter,itemgetter
 
-    def __call__(self,)->int:
-        self.val += 1
-        return self.val -1
-
-
-def det2d( X : np.ndarray,
-           )-> float:
-
-    return X[0,0]*X[1,1] - X[0,1]*X[1,0]
-
-def inv2d( X : np.ndarray,
-           )->np.ndarray:
-
-    invX = np.zeros(X.shape)
-    invX[0,0] = X[1,1]
-    invX[1,1] = X[0,0]
-    invX[0,1] = -X[0,1]
-    invX[1,0] = -X[1,0]
-    invX /= det2d(X)
-    return invX
+from utils import *
 
 
 class Comp:
+    
+    """Component in Gaussian Mixture
 
-    # write for optimal performance in 2D
+    Components used to construct a Gaussian Mixture,
+    has a mean, covariance matrix and weight associated
+    with it. Each component is assigned an id and has a
+    lineage attribute in order to track the progress.
+
+    These components only support 2D data, while less flexible
+    this allows for better performance as many calculations
+    can be simplified in the 2D case, e.g., calculation of
+    the inverse and determinant.
+
+
+    Parameters:
+    -----------
+
+    w : float
+        weight in mixture
+    mu : np.ndarray
+        mean of 2D Gaussian 
+    S : np.ndarray
+        covariance matrix of 2D Gaussian
+    comp_id: int
+        component's id
+    lineage : Optional[List[Tuple[int,int]]]
+        A list of tuples or single tuple in the format
+        (timepoint,id of parent)
+
+    """
 
     def __init__(self,
                  w : float,
@@ -53,20 +54,29 @@ class Comp:
                  )->None:
 
 
+        # check that S is proper cov.matrix
+        assert covariance_matrix_check(S),\
+            "covariance must be a 2x2 positive symmetric matrix"
 
-        assert (S.round(3) == S.round(3).T).all() and\
-            ((S >= 0 ).flatten().all()),\
-            "covariance must be symmetric and positive"
+        # check that weights are non-negative
+        assert w >= 0,\
+            "weights must be non-negative"
+        # check dimensionality of mean
+        assert mu.shape[0] == 2,\
+            "mean must be 2D"
 
+        # set component attributes
         self.__w = w
         self.__mu = mu
         self.__S = S
 
-        self.normalizer = np.sqrt(det2d(self.__S)) * 2.0 * np.pi
+        # pre-compute inverse
         self.invS = inv2d(self.__S)
-
+        # set id of component. Used for
+        # lineage tracing
         self.id = comp_id
 
+        # prepare for lineage storage
         self.lineage = []
         if lineage is not None:
             if isinstance(lineage,tuple):
@@ -74,28 +84,14 @@ class Comp:
             else:
                 self.lineage += lineage
 
-        # self.lineage.append((t,self.id))
-
-
-    def __len__(self,)->int:
-        return self.w.shape[0]
-
-    def eval(self,x : np.ndarray,
-             )->float:
-
-        delta = x - self.__mu
-        y = np.exp(-0.5 * np.dot(np.dot(delta.T,self.invS),delta))
-        y /= self.normalizer
-
-        return y
-
     @property
     def mu(self,)->np.ndarray:
         return self.__mu
+
     @mu.setter
     def mu(self, mu,)->None:
         assert mu.shape[0] == 2,\
-            "wrong length of my"
+            "mean must be 2D"
         self.__mu = mu
 
     @property
@@ -104,61 +100,85 @@ class Comp:
 
     @S.setter
     def S(self,S)->None:
+        assert covariance_matrix_check(S),\
+            "covariance must be a 2x2 positive symmetric matrix"
         self.__S = S
-        self.normalizer = np.sqrt(det2d(self.__S)) * 2.0 * np.pi
         self.invS = inv2d(self.__S)
 
     @property
     def w(self,)->float:
         return self.__w
+
     @w.setter
     def w(self,w)->None:
         assert w >= 0,\
-            "weights must be n.n"
-
+            "weights must be non-negative"
         self.__w = float(w)
 
-
-
-
-
-def mvneval(mu : np.ndarray,
-            S : np.ndarray,
-            x : np.ndarray,
-            )->float:
-
-    delta = x - mu
-    y = np.exp(-0.5 * np.dot(np.dot(delta.T,inv2d(S)),delta))
-    y /= np.sqrt(det2d(S)) * 2.0 * np.pi
-
-    return float(y)
-
-
-def sampleComp( componensts : List[Comp],
-                size : int = 1,
-                )->np.ndarray:
-    # inspired by https://stackoverflow.com/a/4266562/13371547
-
-    sample = lambda x : np.random.multivariate_normal(loc = x.mu,
-                                                      scale = x.S,
-                                                      size = size,
-                                                      )
-    u = np.ranndom.random()
-    p = 0
-
-    for i,comp in enumerate(components):
-        p += comp.w
-
-        if p >= u:
-            return sample(comp)
-        elif i == len(components):
-            return sample(comp)
-        else:
-            raise Error
-
-
-
 class GMPHD:
+
+    """GM-PHD Model
+
+    An implementation of the model presented in:
+    -------------
+    Title: A Closed-Form Solution for the Probability Hypothesis Density Filter
+    Authors : Ba-Ngu Vo and Wing-Kin Ma
+    DOI: 10.1109/TSP.2006.881190
+    -------------
+
+    Additional features have been added to allow
+    lineage tracking to assess how particles
+    move through time.
+
+
+    initial : List[Comp]
+        list with set of components to initialize model with
+    pS : float
+        probability of survival
+    pD : float,
+        probability of death
+    F : np.ndarray
+        state transition matrix
+    Q : np.ndarray
+        process noise covariance matrix
+    R : np.ndarray,
+        measurement noise covariance matrix
+    clutter : float
+        clutter parameter (kappa in original publication)
+    thrs_T : float = None
+        truncation threshold for components in pruning
+    thrs_U : float (0.1)
+        merging threshold for components in pruning
+    J_max : int (50)
+        maximum allowable number of Gaussian terms
+    birth_params : Optional[Dict[str,Number]] (None)
+        A dictionary dictating the birth process,
+        containing:
+
+          N - the number of components to add
+          w - weight to assign new components
+          S - covariance matrix for new components
+
+        If set to None, no births will occur.
+
+    spawn_params : Optional[Dict[str,Number]] = None,
+        A dictionary dictating the spawn process,
+        containing:
+
+          N - the number of components to spawn from each
+              existing component
+          w - weight to assign spawned components
+          Q - covariance matrix for new components
+          d - bias term in affine transformation of component mean
+          F - transition matrix to propagate mean
+
+
+        If set to None, no spawning will occur.
+
+    t : int (0)
+        Time point at which data series starts
+
+    """
 
     def __init__(self,
                  initial : List[Comp],
@@ -176,9 +196,25 @@ class GMPHD:
                  t : int = 0,
                  ) -> None:
 
-
+        # set time
         self.t = t
 
+        # check validity of parameters
+        for name,prob in zip(["survival probability",
+                              "death probability"],
+                             [pD,pS]
+                       ):
+            assert prob >= 0 and prob <=1,\
+                "{} must be in interval [0,1]".format(name)
+
+        for name,M in zip(["Q","R"],
+                          [Q,R]
+                          ):
+
+            assert covariance_matrix_check(M),\
+                "{} is not a proper covariance matrix".format(M)
+
+        # set attributes
         self.mix = initial
         self.pD = pD
         self.pS = pS
@@ -188,14 +224,17 @@ class GMPHD:
         self.clutter = clutter
 
 
+        # control that necessary entries in birth_params are
+        # present
         if birth_params is None:
             self.birth_params = None
         else:
-            birth_param_names = ["N","w","mu","S"]
+            birth_param_names = ["N","w","S"]
             check_birth_params = all([x in birth_params.keys() for x in birth_param_names])
             self.birth_params = (birth_params if check_birth_params else None)
 
-
+        # control that necessary entries in spawn_params are
+        # present
         if spawn_params is None:
             self.spawn_params = None
         else:
@@ -203,35 +242,88 @@ class GMPHD:
             check_spawn_params = all([x in spawn_params.keys() for x in spawn_param_names])
             self.spawn_params = (spawn_params if check_spawn_params else None)
 
+        # set truncation threshold
         if thrs_T is None:
             self.thrs_T = 1.0 / len(self.mix)
         else:
             self.thrs_T = thrs_T
 
+        # set merging threshold
         self.thrs_U = thrs_U
+        # set maximum number of allowable components
         self.J_max = J_max
-
+        # set identity matrix, for later use
         self.I = np.eye(2)
 
+        # instantiate ID-generator object
         self.genid = Counter(val = max([x.id for x in self.mix]))
 
+        # set lists to hold lineage information
         self._track_state = []
         self._track_lineage = []
         self._track_idxs = []
+        self._track_times = []
 
 
+    # def breed(self,
+    #           )->List[Comp]:
 
+
+    #     born = []
+
+    #     if self.birth_params is not None:
+    #         for k in range(self.birth_params.get("N")):
+    #             _comp = Comp(w = self.birth_params("w"),
+    #                          mu = self.birth_params("mu"),
+    #                          S = self.birth_params("S"),
+    #                          id = self.genid(),
+    #                          t = self.t,
+    #                         )
+
+    #             born.append(_comp)
+
+
+    #     return born
 
     def breed(self,
               )->List[Comp]:
 
+        """Birth process
+
+        Will sample mean coordinates randomly from inhabited
+        space, birth params will be used for remaining
+        attributes.
+
+        """
+
 
         born = []
 
+        mus = np.array([comp.mu for comp in self.mix])
+        mns = np.min(mus,axis =0)
+        mxs = np.max(mus,axis =0)
+
+        def sample_mu():
+            x = np.random.uniform(low = mns[0],
+                                  high = mxs[0],
+                                  )
+
+            y = np.random.uniform(low = mns[1],
+                                  high = mxs[1],
+                                  )
+
+            return np.array([x,y])
+
+
+
         if self.birth_params is not None:
             for k in range(self.birth_params.get("N")):
+
+
+                _mu = sample_mu()
+
                 _comp = Comp(w = self.birth_params("w"),
-                             mu = self.birth_params("mu"),
+                             mu = _mu,
                              S = self.birth_params("S"),
                              id = self.genid(),
                              t = self.t,
@@ -245,20 +337,26 @@ class GMPHD:
     def spawn(self,
               )->List[Comp]:
 
+        """Spawning process"""
+
 
         spawned = []
         if self.spawn_params is not None:
             for k in range(self.spawn_params["N"]):
                 for comp in self.mix:
+
                     w_k_km1 = comp.w * self.spawn_params["w"]
-                    mu_k_km1 = self.spawn_params["d"] + np.dot(self.spawn_params["F"],
-                                                            comp.mu,
-                                                            )
-                    S_k_km1 = self.spawn_params["Q"] + np.dot(np.dot(self.spawn_params["F"],
-                                                                    comp.S,
-                                                                    ),
-                                                            self.spawn_params["F"].T,
-                                                            )
+                    mu_k_km1 = self.spawn_params["d"] +\
+                        np.dot(self.spawn_params["F"],
+                               comp.mu,
+                        )
+
+                    S_k_km1 = self.spawn_params["Q"] +\
+                        np.dot(np.dot(self.spawn_params["F"],
+                                      comp.S,
+                                      ),
+                               self.spawn_params["F"].T,
+                               )
 
 
                     spawned.append(Comp(w = w_k_km1,
@@ -271,13 +369,27 @@ class GMPHD:
 
         return spawned
 
+    def __len__(self,
+                )->int:
+
+        return len(self.mix)
+
     def update(self,
                Z : np.ndarray,
                )->None:
 
+        """Update State
+
+        Parameters:
+        ----------
+        Z : np.ndarray
+            set of observations, on the form [n_obs x 2]
+
+        """
+
         self.t += 1
 
-        # Step 1
+        # Step 1 | Prediction of brith targets and spawning
         born = self.breed()
 
         predicted = self.mix + born
@@ -287,7 +399,7 @@ class GMPHD:
         predicted += spawned
 
 
-        # Step 2
+        # Step 2 | Predicition for existing targets
 
         for comp in self.mix:
             comp.w = self.pS * comp.w
@@ -295,7 +407,7 @@ class GMPHD:
             comp.S = self.Q + np.dot(np.dot(self.F,comp.S),self.F.T)
 
 
-        # Step 3
+        # Step 3 | Construction of PHD update components
 
         M_k_list = []
         K_k_list = []
@@ -311,7 +423,7 @@ class GMPHD:
             K_k_list.append(K_k)
             S_k_k_list.append(S_k_k)
 
-        # Step 4
+        # Step 4 | Update
         newmix= []
         for comp in predicted:
             newmix.append(Comp(w = (1.0 - self.pD)*comp.w,
@@ -343,7 +455,9 @@ class GMPHD:
                                        ))
 
 
-            scale = float(1.0 / (sum([c.w for c in newmixpart]) + self.clutter))
+            scale = float(1.0 / (sum([c.w for c\
+                                      in newmixpart]) +\
+                                 self.clutter))
 
             for comp in newmixpart:
                 comp.w *= scale
@@ -358,6 +472,25 @@ class GMPHD:
                j : int,
                i : int,
                )->float:
+        """Compute squared Mahalanobis distance
+
+        helper function for pruning, used to find which
+        components that should be joined togeter (if result
+        is less than thrs_U).
+
+        Parameters:
+        ----------
+
+        j : int
+            index of weight with highest value
+        i : int
+            weight index to test for merging
+
+        Returns:
+        -------
+        The value of (mu_i - mu_j)^T (P^i)^{-1}(m_i-m_j)
+
+        """
 
         delta = self.mix[i].mu - self.mix[j].mu
         inv_S = self.mix[i].invS
@@ -369,25 +502,31 @@ class GMPHD:
     def prune(self,
               )->None:
 
-        self.mix = [comp for comp in self.mix if comp.w > self.thrs_T]
+        """Prune components
+
+        Based on the algorithm given in Table II
+        of the original publication.
+
+        """
+
+        self.mix = [comp for comp in self.mix if\
+                    comp.w > self.thrs_T]
 
         w_sum_old = sum([comp.w for comp in self.mix])
 
         set_I = set(range(len(self.mix)))
         max_iter = len(set_I)
         newmix = []
-
         l = 0
-
         while (len(set_I) > 0) or (l > max_iter):
-
-            l +=1
+            l += 1
 
             j = [(i,self.mix[i].w) for i in set_I]
             j.sort(key = lambda x: x[1])
             j = j[0][0]
 
-            set_L = [i for i in set_I if self.dist_U(j,i) <= self.thrs_U ]
+            set_L = [i for i in set_I if \
+                     self.dist_U(j,i) <= self.thrs_U ]
 
             set_L = set(set_L)
 
@@ -395,7 +534,8 @@ class GMPHD:
 
                 w_l = sum([self.mix[i].w for i in set_L])
 
-                mu_l = 1.0 / w_l * sum([self.mix[i].mu * self.mix[i].w for i in set_L])
+                mu_l = 1.0 / w_l * sum([self.mix[i].mu *\
+                                        self.mix[i].w for i in set_L])
 
                 S_l = []
 
@@ -406,7 +546,8 @@ class GMPHD:
 
                 for i in set_L:
                     _delta = mu_l - self.mix[i].mu
-                    _term = self.mix[i].w * (self.mix[i].S + np.dot(_delta,_delta.T))
+                    _term = self.mix[i].w * (self.mix[i].S +\
+                                             np.dot(_delta,_delta.T))
 
                     S_l.append(_term)
 
@@ -441,85 +582,98 @@ class GMPHD:
 
     def _update_strong_components(self,
                                   )->None:
+        """Update multiple-target state set
+
+        Updates the list of components to be used
+        in the multiple-target state extraction
+
+        """
 
         self._strong_components = []
         for k,comp in enumerate(self.mix):
             if comp.w > 0.5:
-                # for _ in range(int(round(comp.w))):
+                for _ in range(int(round(comp.w))):
                     self._strong_components.append(k)
 
 
     def update_trajectory(self,
                           )->None:
+        """Update trajectory information
 
+        function used to track propagation of
+        objects
+
+        """
 
         _states = []
         _lineages = []
         _idxs = []
+        _times = []
         for j in self._strong_components:
             _states.append(self.mix[j].mu)
             _lineages.append(self.mix[j].lineage[-1][1])
             _idxs.append(self.mix[j].id)
+            _times.append(self.t)
 
         self._track_state.append(np.asarray(_states))
         self._track_lineage.append(_lineages)
         self._track_idxs.append(_idxs)
+        self._track_times.append(_times)
 
 
     def compile_trajectory(self,
-                           )->List[np.ndarray]:
+                           )->Tuple[List[np.ndarray],
+                                    List[np.ndarray]]:
+
+        """Compile trajectory from model
+
+        Returns:
+        -------
+
+        Tuple with (1) a list of trajectories, each element
+        is a distinct trajectory; and (2) a list of arrays with
+        coupled time points for respective trajectory in
+        (1).
+
+        """
 
 
         trajs = []
+        times = []
+
         T = len(self._track_state)
+
         for center in range(len(self._track_state[-1])):
             _crds = list()
+            _time = list()
             k = center
             for _t in range(1,T+1):
                 t = T - _t
                 _crds.append(self._track_state[t][k,:])
-                parent = self._track_idxs[t-1] == self._track_lineage[t][k]
+                _time.append(self._track_times[t][k])
+                parent = self._track_idxs[t-1] == \
+                    self._track_lineage[t][k]
                 if parent.sum() > 0:
-                    k = np.argmax(self._track_idxs[t-1] == self._track_lineage[t][k])
+                    k = np.argmax(self._track_idxs[t-1] ==\
+                                  self._track_lineage[t][k])
                 else:
                     break
-
             trajs.append(np.asarray(_crds))
+            times.append(np.asarray(_times))
 
-        return trajs
+        return trajs,times
 
 
     def extractstate(self,
                      )->np.ndarray:
+        """Extract current state
 
-        # state = []
-        # lineage = []
-        # idxs = []
+        Based on Table III in the original publication
 
-        # for j in self.strong_components:
-            # state.append(self.mix[j].mu)
-            # lineage.append(self.mix[j].lineage[-2][1])
-            # idxs.append(self.mix[j].id)
+        Returns:
+        -------
+        Array with current state estimate
 
-        # return (np.asarray(state), lineage, idxs)
+        """
 
         return self._track_state[-1]
-
-
-
-def weighted_mode(ws : np.ndarray,
-                  vals : np.ndarray,
-                  )->Union[int,float]:
-
-    v_dict = dict()
-
-    for v,w in zip(vals,ws):
-        if v in v_dict.keys():
-            v_dict[v] += w
-        else:
-            v_dict[v] = w
-
-    return max(v_dict.items(), key=itemgetter(1))[0]
-
-
-
