@@ -1,0 +1,22 @@
+
+F: np.eye(2)
+pD: 0.4
+pS: 0.8
+S: 10 * np.eye(2)
+Q: 20 * np.eye(2)
+R: 20 * np.eye(2)
+clutter: 1e-6
+thrs_T: 1e-3
+thrs_U: 2
+J_max: 100
+spawn_params:
+  N: 5
+  w: 1e-6
+  d: np.zeros(2)
+  Q: 10 * np.eye(2)
+  F: np.eye(2)
+birth_params:
+  N : 10
+  w: 1e-8
+  S: 10 * np.eye(2)
+

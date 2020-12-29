@@ -8,20 +8,20 @@ import matplotlib.pyplot as plt
 import os.path as osp
 import numpy as np
 
-from typing import Optional,Any,Dict,List
+from typing import *
 
 
 def get_centers(img : np.ndarray,
-                kernel_size : int = 3,
+                kernel_size : int = 21,
                 sigma : float = 10,
                 thrs_prms : Optional[Dict[str,Any]] = None,
                 hugh_prms : Optional[Dict[str,Any]] = None,
-                )->pd.DataFrame:
+                include_processed_image : bool = False,
+                )->Tuple[pd.DataFrame,Optional[np.ndarray]]:
 
 
     assert len(img.shape) == 2,\
         "image must be in grayscale"
-
 
     thrs_prms = (thrs_prms if thrs_prms is not None else {})
     hugh_prms = (hugh_prms if hugh_prms is not None else {})
@@ -34,13 +34,13 @@ def get_centers(img : np.ndarray,
 
 
     _,tmp = cv2.threshold(tmp,
-                          thresh = thrs_prms.pop("thresh",0),
+                          thresh = thrs_prms.pop("thresh",200),
                           maxval = thrs_prms.pop("maxval",255),
                           type = cv2.THRESH_BINARY_INV+cv2.THRESH_OTSU,
                           **thrs_prms,
                           )
 
-    tmp = cv2.HoughCircles(tmp,
+    res = cv2.HoughCircles(tmp,
                            method = cv2.HOUGH_GRADIENT,
                            dp = hugh_prms.pop("dp",1),
                            minDist = hugh_prms.pop("minDist",20),
@@ -51,39 +51,50 @@ def get_centers(img : np.ndarray,
                            **hugh_prms,
                            )
 
-    tmp = pd.DataFrame(tmp[0,:,[0,1]].T,
+    res = pd.DataFrame(res[0,:,[0,1]].T,
                        columns = ["x","y"],
                        )
 
-    return tmp
+    if include_processed_image:
+        return res,tmp
+    else:
+        res,None
 
 
 
 
 def generate_table(img_pths : List[np.ndarray],
                    t0 : int = 0,
-                   )->pd.DataFrame:
+                   include_processed_image : bool = False,
+                   )->Tuple[pd.DataFrame,Optional[List[np.ndarray]]]:
 
 
-    res = list()
+    res : List[pd.DataFrame] = list()
+    processed_images : List[np.ndarray] = list()
 
     for _t,pth in enumerate(img_pths):
 
         t = t0 + _t
 
         tmp = cv2.imread(pth,0)
-        tmp = get_centers(tmp)
+        tmp,proc_img = get_centers(tmp,
+                                   include_processed_image = include_processed_image)
         tmp["time"] = t
 
         index  = ["t_{}_obs_{}".format(t,k) for k in range(tmp.shape[0])]
         tmp.index = pd.Index(index)
 
         res.append(tmp)
+        if include_processed_image:
+            processed_images.append(proc_img)
 
 
     res = pd.concat(res)
 
-    return res
+    if include_processed_image:
+        return res,processed_images
+    else:
+        return res,None
 
 
 
@@ -115,8 +126,14 @@ if __name__ == "__main__":
        default = 0,
        )
 
-    aa("-p",
-       "--include_image",
+    aa("-mi",
+       "--mark_images",
+       action = "store_true",
+       default = False,
+       )
+
+    aa("-pp",
+       "--include_processed_images",
        action = "store_true",
        default = False,
        )
@@ -129,9 +146,10 @@ if __name__ == "__main__":
 
     args = prs.parse_args()
 
-    res = generate_table(args.images,
-                         t0 = args.time,
-                         )
+    res,processed_images = generate_table(args.images,
+                                          args.time,
+                                          args.include_processed_images,
+                                          )
 
 
     res.to_csv(osp.join(args.out_dir,
@@ -141,25 +159,52 @@ if __name__ == "__main__":
                index = True,
                )
 
+    if args.include_processed_images:
+        for t,tmp in enumerate(processed_images):
+            # fig,ax = plt.subplots(1,1,
+            #                       facecolor = "white",
+            #                       dpi = 100,
+            #                       )
 
-    if args.include_image:
-        for t,pth in enumerate(args.images):
-            tmp = cv2.imread(pth)
-            fig,ax = plt.subplots(1,1)
-            ax.imshow(tmp)
-            ax.axis("off")
 
-            pos = res["time"].values == t
 
-            ax.scatter(res.x[pos].values,
-                       res.y[pos].values,
-                       s = args.marker_size,
-                       c = "red",
-                       )
+            # ax.imshow(np.asarray(tmp),
+            #           aspect ="equal",
+            #           interpolation = "nearest",
+            #           )
+            # ax.axis("off")
+            # if args.mark_images:
+            #     pos = res["time"].values == t
 
-            base = ".".join(osp.basename(pth).split(".")[0:-1])
-            fig.savefig(osp.join(args.out_dir,"marked_" + base + ".png"))
-            plt.close("all")
+            #     ax.scatter(res.x[pos].values,
+            #                res.y[pos].values,
+            #                s = args.marker_size,
+            #                c = "red",
+            #             )
+
+
+            base = ".".join(osp.basename(args.images[t]).split(".")[0:-1])
+
+            if args.mark_images:
+                tmp = cv2.cvtColor(tmp,cv2.COLOR_GRAY2RGB)
+                pos = (res.time == t)
+                for p in res[["x","y"]].values[pos,:]:
+                    tmp = cv2.circle(tmp,
+                                     tuple(p),
+                                     radius = 5,
+                                     color = (255,0,0),
+                                     thickness = -1)
+
+            cv2.imwrite(osp.join(args.out_dir,"marked_" + base + ".png"),
+                        tmp)
+
+            # fig.savefig(osp.join(args.out_dir,"marked_" + base + ".png"),
+            #             bbox_inches='tight',
+            #             transparent="True",
+            #             pad_inches = 0,
+            #             )
+            # # fig.tight_layout()
+            # plt.close("all")
 
 
 
