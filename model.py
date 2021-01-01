@@ -4,7 +4,7 @@ import numpy as np
 from scipy.stats import mode as get_mode
 
 
-from typing import List,Dict,Optional,Tuple,Union
+from typing import *
 from numbers import Number
 
 from operator import attrgetter,itemgetter
@@ -50,7 +50,8 @@ class Comp:
                  S : np.ndarray,
                  comp_id : int,
                  t : int = 0,
-                 lineage : Optional[List[Tuple[int,int]]] = None,
+                 lineage : Optional[Tuple[int,int]] = None,
+                 spawned : bool = False,
                  )->None:
 
 
@@ -69,6 +70,9 @@ class Comp:
         self.__w = w
         self.__mu = mu
         self.__S = S
+
+        # is component spawned
+        self.spawned = spawned
 
         # pre-compute inverse
         self.invS = inv2d(self.__S)
@@ -151,7 +155,7 @@ class GMPHD:
         merging threshold for components in pruning
     J_max : int (50)
         maximum allowable number of Gaussian terms
-    birth_params : Optional[Dict[str,Number]] (None)
+    birth_params : Optional[Dict[str,Union[int,float,np.ndarray]]] (None)
         A dictionary dictating the birth process,
         containing:
 
@@ -161,7 +165,7 @@ class GMPHD:
 
         If set to None, no births will occur.
 
-    spawn_params : Optional[Dict[str,Number]] = None,
+    spawn_params : Optional[Dict[str,Union[int,float,np.ndarray]]] (None)
         A dictionary dictating the spawn process,
         containing:
 
@@ -191,8 +195,8 @@ class GMPHD:
                  thrs_T : float = None,
                  thrs_U : float = 0.1,
                  J_max : int = 50,
-                 birth_params : Optional[Dict[str,Number]] = None,
-                 spawn_params : Optional[Dict[str,Number]] = None,
+                 birth_params : Optional[Dict[str,Any]] = None,
+                 spawn_params : Optional[Dict[str,Any]] = None,
                  t : int = 0,
                  ) -> None:
 
@@ -256,36 +260,18 @@ class GMPHD:
         self.I = np.eye(2)
 
         # instantiate ID-generator object
-        self.genid = Counter(val = max([x.id for x in self.mix]))
+        max_val : int = max([x.id for x in self.mix])
+        self.genid : Counter = Counter(val = max_val)
 
         # set lists to hold lineage information
-        self._track_state = []
-        self._track_lineage = []
-        self._track_idxs = []
-        self._track_times = []
+        self._track_state : List[np.ndarray] = []
+        self._track_lineage : List[np.ndarray] = []
+        self._track_idxs : List[np.ndarray] = []
+        self._track_times : List[np.ndarray] = []
 
-
-    # def breed(self,
-    #           )->List[Comp]:
-
-
-    #     born = []
-
-    #     if self.birth_params is not None:
-    #         for k in range(self.birth_params.get("N")):
-    #             _comp = Comp(w = self.birth_params("w"),
-    #                          mu = self.birth_params("mu"),
-    #                          S = self.birth_params("S"),
-    #                          id = self.genid(),
-    #                          t = self.t,
-    #                         )
-
-    #             born.append(_comp)
-
-
-    #     return born
 
     def breed(self,
+              Z : np.ndarray,
               )->List[Comp]:
 
         """Birth process
@@ -299,33 +285,18 @@ class GMPHD:
 
         born = []
 
-        mus = np.array([comp.mu for comp in self.mix])
-        mns = np.min(mus,axis =0)
-        mxs = np.max(mus,axis =0)
+        if isinstance(self.birth_params,dict):
+            n_obs = Z.shape[0]
+            probs = [ sum([mvneval(c.mu,c.S,Z[ii,:]) for c in self.mix]) for ii in range(n_obs)]
+            ordr = np.argsort(probs)
 
-        def sample_mu():
-            x = np.random.uniform(low = mns[0],
-                                  high = mxs[0],
-                                  )
+            for k in range(int(self.birth_params.get("N",1))):
+                # _mu = sample_mu()
 
-            y = np.random.uniform(low = mns[1],
-                                  high = mxs[1],
-                                  )
-
-            return np.array([x,y])
-
-
-
-        if self.birth_params is not None:
-            for k in range(self.birth_params.get("N")):
-
-
-                _mu = sample_mu()
-
-                _comp = Comp(w = self.birth_params("w"),
-                             mu = _mu,
-                             S = self.birth_params("S"),
-                             id = self.genid(),
+                _comp = Comp(w = self.birth_params["w"],
+                             mu = Z[ordr[k % n_obs],:],
+                             S = self.birth_params["S"],
+                             comp_id = self.genid(),
                              t = self.t,
                             )
 
@@ -344,28 +315,29 @@ class GMPHD:
         if self.spawn_params is not None:
             for k in range(self.spawn_params["N"]):
                 for comp in self.mix:
+                    if not comp.spawned:
+                        w_k_km1 = comp.w * self.spawn_params["w"]
+                        mu_k_km1 = self.spawn_params["d"] +\
+                            np.dot(self.spawn_params["F"],
+                                comp.mu,
+                            )
 
-                    w_k_km1 = comp.w * self.spawn_params["w"]
-                    mu_k_km1 = self.spawn_params["d"] +\
-                        np.dot(self.spawn_params["F"],
-                               comp.mu,
-                        )
-
-                    S_k_km1 = self.spawn_params["Q"] +\
-                        np.dot(np.dot(self.spawn_params["F"],
-                                      comp.S,
-                                      ),
-                               self.spawn_params["F"].T,
-                               )
+                        S_k_km1 = self.spawn_params["Q"] +\
+                            np.dot(np.dot(self.spawn_params["F"],
+                                        comp.S,
+                                        ),
+                                self.spawn_params["F"].T,
+                                )
 
 
-                    spawned.append(Comp(w = w_k_km1,
-                                        mu = mu_k_km1,
-                                        S = S_k_km1,
-                                        comp_id = self.genid(),
-                                        t = self.t,
-                                        lineage = (self.t-1,comp.id),
-                                        ))
+                        spawned.append(Comp(w = w_k_km1,
+                                            mu = mu_k_km1,
+                                            S = S_k_km1,
+                                            comp_id = self.genid(),
+                                            t = self.t,
+                                            lineage = (self.t-1,comp.id),
+                                            spawned = True,
+                                            ))
 
         return spawned
 
@@ -387,10 +359,9 @@ class GMPHD:
 
         """
 
-        self.t += 1
 
         # Step 1 | Prediction of brith targets and spawning
-        born = self.breed()
+        born = self.breed(Z)
 
         predicted = self.mix + born
 
@@ -466,6 +437,7 @@ class GMPHD:
             newmix.extend(newmixpart)
 
         self.mix = newmix
+        self.t += 1
 
 
     def dist_U(self,
@@ -526,9 +498,7 @@ class GMPHD:
             j = j[0][0]
 
             set_L = [i for i in set_I if \
-                     self.dist_U(j,i) <= self.thrs_U ]
-
-            set_L = set(set_L)
+                     (self.dist_U(j,i) <= self.thrs_U) ]
 
             if len(set_L) > 0:
 
@@ -560,7 +530,7 @@ class GMPHD:
                                    S_l,
                                    comp_id = self.genid(),
                                    t = self.t,
-                                   lineage = (self.t -1,lin)
+                                   lineage = (self.t -1,int(lin))
                                    ))
 
         if len(newmix) >= self.J_max:
@@ -591,8 +561,8 @@ class GMPHD:
 
         self._strong_components = []
         for k,comp in enumerate(self.mix):
-            if comp.w > 0.5:
-                for _ in range(int(round(comp.w))):
+            if comp.w >= 0.5:
+                # for _ in range(int(round(comp.w))):
                     self._strong_components.append(k)
 
 
@@ -641,27 +611,77 @@ class GMPHD:
         trajs = []
         times = []
 
-        T = len(self._track_state)
+        # T = len(self._track_state)
 
-        for center in range(len(self._track_state[-1])):
+        # for center in range(len(self._track_state[-1])):
+        #     _crds = list()
+        #     _time = list()
+        #     k = center
+        #     for _t in range(1,T+1):
+        #         t = T - _t
+        #         _crds.append(self._track_state[t][k,:])
+        #         _time.append(self._track_times[t][k])
+
+        #         parent = [ x == self._track_lineage[t][k] for x\
+        #                    in self._track_idxs[t-1]]
+
+        #         if sum(parent) > 0:
+        #             k = np.argmax(parent)
+        #         else:
+        #             break
+        #     trajs.append(np.asarray(_crds))
+        #     times.append(np.asarray(_time))
+
+        # return trajs,times
+
+        T = len(self._track_state)
+        tracked = list()
+
+        for t in range(0,T):
             _crds = list()
             _time = list()
-            k = center
-            for _t in range(1,T+1):
-                t = T - _t
-                _crds.append(self._track_state[t][k,:])
-                _time.append(self._track_times[t][k])
-                parent = self._track_idxs[t-1] == \
-                    self._track_lineage[t][k]
-                if parent.sum() > 0:
-                    k = np.argmax(self._track_idxs[t-1] ==\
-                                  self._track_lineage[t][k])
-                else:
-                    break
-            trajs.append(np.asarray(_crds))
-            times.append(np.asarray(_times))
+
+            idxs = set(self._track_idxs[t])
+
+            for idx in idxs:
+                _crds = list()
+                _time = list()
+
+                if idx not in tracked:
+                    tracked.append(idx)
+                    pos = [x == idx for x in self._track_idxs[t]]
+                    pos = np.argmax(pos)
+
+                    _crds.append(self._track_state[t][pos])
+                    _time.append(self._track_times[t][pos])
+
+                    tt = t + 1
+                    new_idx = idx
+
+                    while tt < T:
+
+                        child = [x == new_idx for x in\
+                                 self._track_lineage[tt]
+                                 ]
+
+                        if sum(child) == 0:
+                            break
+
+                        child = np.argmax(child)
+
+                        _crds.append(self._track_state[tt][child])
+                        _time.append(self._track_times[tt][child])
+
+                        new_idx = self._track_idxs[tt][child]
+                        tracked.append(new_idx)
+
+                        tt +=1
+
+                    trajs.append(np.asarray(_crds))
+                    times.append(np.asarray(_time))
 
         return trajs,times
+
 
 
     def extractstate(self,

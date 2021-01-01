@@ -1,7 +1,10 @@
 
 import numpy as np
 from scipy.stats import mode as get_mode
+
 import cv2
+import PIL
+from PIL import Image,ImageDraw
 
 
 from typing import List,Dict,Optional,Tuple,Union,Iterable
@@ -17,6 +20,12 @@ import matplotlib.pyplot as plt
 
 
 import tempfile
+
+def iprint( s : str)->None:
+    print("[INFO] : {}".format(s))
+
+def eprint( s : str)->None:
+    print("[ERROR] : {}".format(s))
 
 # from model import Comp
 def weighted_mode(ws : np.ndarray,
@@ -145,7 +154,6 @@ def format_trajs(trajs : List[np.ndarray],
 
     for k,(time,traj) in enumerate(zip(times,trajs)):
 
-        # t_vec = t_end - np.arrange(traj.shape[0])
 
         _tmp = pd.DataFrame(traj,
                             columns = ["x","y"],
@@ -166,6 +174,8 @@ def animate_trajectories(traj_res : pd.DataFrame,
                          out_dir : str,
                          tag : str,
                          delay : int = 10,
+                         color_by_id : bool = True,
+                         save_frames: bool = True,
                          **kwargs,
                          )->None:
 
@@ -174,45 +184,46 @@ def animate_trajectories(traj_res : pd.DataFrame,
     n_zeros = int(np.floor(np.log10(times[-1])))
 
     n_times = times.shape[0]
-    main_marker_size = kwargs.get("marker_size",10)
+    main_marker_size = kwargs.get("marker_size",2)
+
+    uni_ids = np.unique(traj_res.cell)
+    color_dict = {i:tuple(np.random.randint(low=0,
+                                            high=255,
+                                            size = 3,
+                                            dtype = int))\
+                  for i in uni_ids}
+
 
     with tempfile.TemporaryDirectory() as tmpdir:
         for current_t in range(n_times):
-            img = cv2.imread(images[current_t],0)
-            fig,ax = plt.subplots(1,
-                                1,
-                                facecolor = "white",
-                                  )
-            ax.imshow(img)
+            img = cv2.imread(images[current_t])
+            img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+            img = Image.fromarray(img)
 
-            for k,t in enumerate(range(max(0,times[current_t]-delay),
-                                       times[current_t])):
+            draw = ImageDraw.Draw(img)
 
+            start = max(0,times[current_t]-delay)
+            end = times[current_t]
+            for k,t in enumerate(range(start,end+1)):
                 is_time  = (traj_res["time"].values == t).flatten()
                 crds = traj_res[["x","y"]].values[is_time,:]
+                ids = traj_res.cell.values[is_time]
 
-                size_fraction = (k / delay)
-                ax.scatter(crds[:,0],
-                           crds[:,1],
-                           c = kwargs.get("marker_color","red"),
-                           s = main_marker_size * size_fraction,
-                           alpha = size_fraction,
-                )
-
-
-
-            ax.axis("off")
+                delta = (end -start)
+                delta = (1 if delta == 1 else delta)
+                size_fraction = (k / delta)
+                for p,i in zip(crds,ids):
+                    r = main_marker_size * size_fraction / 2
+                    fill = (color_dict[i] if color_by_id else (255,0,0))
+                    draw.ellipse((p[0]-r, p[1]-r, p[0]+r, p[1]+r), fill=fill)
 
             frame = "0"+"0"*int(n_zeros - np.floor(np.log10(t + 0.1))) +\
                 str(times[current_t])
 
-            fig.savefig(osp.join(tmpdir,"frame_{}.png")\
-                        .format(frame),
-                        bbox_inches='tight',
-                        transparent="True",
-                        )
-            fig.tight_layout()
-            plt.close("all")
+            out_fn = osp.join(tmpdir,"frame_{}.png")\
+                        .format(frame)
+
+            img.save(out_fn,"PNG")
 
         cmd = ["convert",
                "-delay", "20",
@@ -223,6 +234,20 @@ def animate_trajectories(traj_res : pd.DataFrame,
 
 
         sp.call(cmd)
+        if save_frames:
+            from shutil import copytree,rmtree
+            frame_dir  = osp.join(out_dir,"frames")
+            if osp.exists(frame_dir):
+                rmtree(frame_dir)
+            copytree(tmpdir,frame_dir)
 
 
 
+def banner()->None:
+    string = "\n".join(["____ ____ _    _    ___ ____ ____ ____ _  _ ____ ____ ",
+                        "|    |___ |    |     |  |__/ |__| |    |_/  |___ |__/ ",
+                        "|___ |___ |___ |___  |  |  \ |  | |___ | \_ |___ |  \ ",
+                        ])
+    print()
+    print(string)
+    print()

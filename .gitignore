@@ -1,2 +1,5 @@
 notebooks/
 __pycache__/
+mypy_cache/
+*.bak
+data/real/*/imgs/

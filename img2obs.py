@@ -161,27 +161,6 @@ if __name__ == "__main__":
 
     if args.include_processed_images:
         for t,tmp in enumerate(processed_images):
-            # fig,ax = plt.subplots(1,1,
-            #                       facecolor = "white",
-            #                       dpi = 100,
-            #                       )
-
-
-
-            # ax.imshow(np.asarray(tmp),
-            #           aspect ="equal",
-            #           interpolation = "nearest",
-            #           )
-            # ax.axis("off")
-            # if args.mark_images:
-            #     pos = res["time"].values == t
-
-            #     ax.scatter(res.x[pos].values,
-            #                res.y[pos].values,
-            #                s = args.marker_size,
-            #                c = "red",
-            #             )
-
 
             base = ".".join(osp.basename(args.images[t]).split(".")[0:-1])
 
@@ -197,14 +176,6 @@ if __name__ == "__main__":
 
             cv2.imwrite(osp.join(args.out_dir,"marked_" + base + ".png"),
                         tmp)
-
-            # fig.savefig(osp.join(args.out_dir,"marked_" + base + ".png"),
-            #             bbox_inches='tight',
-            #             transparent="True",
-            #             pad_inches = 0,
-            #             )
-            # # fig.tight_layout()
-            # plt.close("all")
 
 
 

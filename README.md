@@ -1,6 +1,6 @@
-# Multiobject Tracking of Biological Cells using a GM-PHD model
+# Multiobject Tracking of Biological Cells using a GM-PHD filter 
 
-This repository contains code for an implementation of the GM-PHD model proposed
+This repository contains code for an implementation of the GM-PHD filter proposed
 by _Vo and Ma_ ([ref](link)), with some slight modifications, designed to enable
 multiobject tracking of cells from brightfield images. While code to extract
 cell positions - the measurements - is provided, this is utilize a very
@@ -75,6 +75,8 @@ birth_params: # birth parameters (set to None to exclude birth)
   S: 10 * np.eye(2) # covariance matrix for new components
 
 ```
+
+_NOTE_ : `numpy` syntax is supported, and can be used to specify covariance matrices etc.
 
 Chose a set of appropriate parameters and construct your own model
 specification, or use one of the pre-existing found in the `configs` folder.
