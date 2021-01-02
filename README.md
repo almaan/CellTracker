@@ -8,7 +8,7 @@ measurements - is provided, this is utilize a very simplistic strategy which
 will not provide optimal results.
 
 This implementation also constitutes the project part of the course FEL3320
-(_Applied Estimation_), given the spring of 2020 at KTH (Royal Institute of
+(_Applied Estimation_), given in during the autumn of 2020 at KTH (Royal Institute of
 Technology).
 
 
@@ -113,7 +113,7 @@ above, and these will be deposited into a subfolder of `OUT_DIR` named `frames`.
 
 # Examples
 
-As an example we can use the Dataset _"HeLa cells stably expressing H2b-GFP"_ from [celltrackingchallenge.net](http://celltrackingchallenge.net/2d-datasets/). The first subset of raw images consist of 93 brightfield images:
+As an example we can use the Dataset _"HeLa cells stably expressing H2b-GFP"_  from [celltrackingchallenge.net](http://celltrackingchallenge.net/2d-datasets/). The first subset of raw images consist of 93 brightfield images:
 
 ![raw images](imgs/original.png)
 
