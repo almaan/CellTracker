@@ -1,4 +1,5 @@
-notebooks/
+notebooks/*ipynb
+!notebooks/synthetic-data-analysis.ipynb
 __pycache__/
 mypy_cache/
 *.bak

@@ -43,8 +43,6 @@ def fit(gmphd : m.GMPHD,
 def run_celltrack(obs : pd.DataFrame,
                   model_params : Dict[str,Any],
                   t0 : int = 0,
-                  # birth_prms : Optional[Dict[str,Any]] = None,
-                  # spawn_prms : Optional[Dict[str,Any]] = None,
                   )->pd.DataFrame:
 
 
@@ -157,6 +155,13 @@ def cli()->None:
            type = int,
            )
 
+    ana_aa("-kf","-keep_frames",
+           default = False,
+           type = bool,
+           action ="store_true",
+           )
+
+
     args = prs.parse_args()
 
 
@@ -242,6 +247,7 @@ def cli()->None:
                                         tag = tag,
                                         marker_size = args.marker_size,
                                         delay = args.delay,
+                                        save_frames = args.keep_frames,
                                         )
                 iprint("Completed animation. Results saved to : {}".format(args.out_dir))
 

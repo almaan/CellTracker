@@ -234,7 +234,8 @@ class GMPHD:
             self.birth_params = None
         else:
             birth_param_names = ["N","w","S"]
-            check_birth_params = all([x in birth_params.keys() for x in birth_param_names])
+            check_birth_params = all([x in birth_params.keys() for x\
+                                      in birth_param_names])
             self.birth_params = (birth_params if check_birth_params else None)
 
         # control that necessary entries in spawn_params are
@@ -243,7 +244,8 @@ class GMPHD:
             self.spawn_params = None
         else:
             spawn_param_names = ["N","w","F","d","Q"]
-            check_spawn_params = all([x in spawn_params.keys() for x in spawn_param_names])
+            check_spawn_params = all([x in spawn_params.keys() for x\
+                                      in spawn_param_names])
             self.spawn_params = (spawn_params if check_spawn_params else None)
 
         # set truncation threshold
@@ -276,9 +278,12 @@ class GMPHD:
 
         """Birth process
 
-        Will sample mean coordinates randomly from inhabited
-        space, birth params will be used for remaining
-        attributes.
+        Z : np.ndarray
+            set of observations
+
+        Returns:
+        -------
+        List of newly "born" components
 
         """
 
@@ -287,14 +292,24 @@ class GMPHD:
 
         if isinstance(self.birth_params,dict):
             n_obs = Z.shape[0]
-            probs = [ sum([mvneval(c.mu,c.S,Z[ii,:]) for c in self.mix]) for ii in range(n_obs)]
-            ordr = np.argsort(probs)
+            probs = [ sum([c.w * mvneval(c.mu,c.S,Z[ii,:]) for\
+                           c in self.mix]) for\
+                      ii in range(n_obs)]
+
+            probs = 1.0 / np.array(probs)
+            probs /= probs.sum()
+
+            idxs = np.arange(n_obs)
 
             for k in range(int(self.birth_params.get("N",1))):
-                # _mu = sample_mu()
+
+                mu_idx = np.random.choice(idxs,
+                                          p = probs,
+                                          )
 
                 _comp = Comp(w = self.birth_params["w"],
-                             mu = Z[ordr[k % n_obs],:],
+                             # mu = Z[ordr[k % n_obs],:],
+                             mu = Z[mu_idx],
                              S = self.birth_params["S"],
                              comp_id = self.genid(),
                              t = self.t,
@@ -610,29 +625,6 @@ class GMPHD:
 
         trajs = []
         times = []
-
-        # T = len(self._track_state)
-
-        # for center in range(len(self._track_state[-1])):
-        #     _crds = list()
-        #     _time = list()
-        #     k = center
-        #     for _t in range(1,T+1):
-        #         t = T - _t
-        #         _crds.append(self._track_state[t][k,:])
-        #         _time.append(self._track_times[t][k])
-
-        #         parent = [ x == self._track_lineage[t][k] for x\
-        #                    in self._track_idxs[t-1]]
-
-        #         if sum(parent) > 0:
-        #             k = np.argmax(parent)
-        #         else:
-        #             break
-        #     trajs.append(np.asarray(_crds))
-        #     times.append(np.asarray(_time))
-
-        # return trajs,times
 
         T = len(self._track_state)
         tracked = list()

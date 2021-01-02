@@ -27,7 +27,6 @@ def iprint( s : str)->None:
 def eprint( s : str)->None:
     print("[ERROR] : {}".format(s))
 
-# from model import Comp
 def weighted_mode(ws : np.ndarray,
                   vals : np.ndarray,
                   )->Union[int,float]:

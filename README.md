@@ -83,22 +83,26 @@ specification, or use one of the pre-existing found in the `configs` folder.
 
 ## Running celltracker
 
-With the formatted input data and model design file, you are now ready to run
+With the formatted input data and model design file, you are now ready to `run`
 `celltracker`. To do this, simply do:
 
 ```sh
-
-$> python3 ./celltrack.py -z INPUT_FILE -mp CONFIG_FILE -t0 0 -o OUT_DIR  --tag "example"
-
+$> python3 ./celltrack.py run -z INPUT_FILE -mp CONFIG_FILE -t0 0 -o OUT_DIR  --tag "example"
 ```
 
-To also produce an animation (only supported on Linux systems), of the results you can instead do:
+Once you've run the model, you can also visualize the results using the `analyze` module, this will produce an animation (only supported on Linux systems). To generate said animation, do:
 
 ```sh
 
-$> python3 ./celltrack.py -z INPUT_FILE -mp CONFIG_FILE -t0 0 -o OUT_DIR  --tag "example" --animate --images IMAGE_DIR
+$> python3 ./celltrack.py analyze -r RESULTS_FILEK -o OUT_DIR  --tag "example" --animate --images IMAGE_DIR
 
 ```
+
+Where `RESULTS_FILE` is the file generated from the previous run, and
+`IMAGE_DIR` holds the images, `IMAGE_DIR` can also be `IMAGE_PTHS`, i.e. several
+paths to the images. Note, it's expected that the images are named such that
+sorting by time and name are equivalent actions.
+
 
 # Examples
 
@@ -110,6 +114,6 @@ When processed with `img2obs.py`, we end up with the following result:
 
 ![processed images](imgs/segmented.jpg)
 
-Running this through `celltracker` we get:
+Running this first through `celltracker run` and then `celltracker analyze` we get:
 
 ![animation](imgs/example-001.gif)
