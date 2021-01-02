@@ -1,10 +1,15 @@
 # Multiobject Tracking of Biological Cells using a GM-PHD filter 
 
-This repository contains code for an implementation of the GM-PHD filter proposed
-by _Vo and Ma_ ([ref](link)), with some slight modifications, designed to enable
-multiobject tracking of cells from brightfield images. While code to extract
-cell positions - the measurements - is provided, this is utilize a very
-simplistic strategy which will not provide optimal results.:
+This repository contains code for an implementation of the GM-PHD filter
+proposed by _Vo and Ma_ ([https://ieeexplore.ieee.org/document/1710358](link)),
+with some slight modifications, designed to enable multiobject tracking of cells
+from brightfield images. While code to extract cell positions - the
+measurements - is provided, this is utilize a very simplistic strategy which
+will not provide optimal results.
+
+This implementation also constitutes the project part of the course FEL3320
+(_Applied Estimation_), given the spring of 2020 at KTH (Royal Institute of
+Technology).
 
 
 # Usage
@@ -101,7 +106,9 @@ $> python3 ./celltrack.py analyze -r RESULTS_FILEK -o OUT_DIR  --tag "example" -
 Where `RESULTS_FILE` is the file generated from the previous run, and
 `IMAGE_DIR` holds the images, `IMAGE_DIR` can also be `IMAGE_PTHS`, i.e. several
 paths to the images. Note, it's expected that the images are named such that
-sorting by time and name are equivalent actions.
+sorting by time and name are equivalent actions. To also save the frames -- from
+which the animation is compiled -- add the `--keep_frames` flag to the command
+above, and these will be deposited into a subfolder of `OUT_DIR` named `frames`.
 
 
 # Examples
