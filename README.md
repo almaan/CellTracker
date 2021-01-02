@@ -113,7 +113,7 @@ above, and these will be deposited into a subfolder of `OUT_DIR` named `frames`.
 
 # Examples
 
-As an example we can use the Dataset _"HeLa cells stably expressing H2b-GFP"_  from [celltrackingchallenge.net](http://celltrackingchallenge.net/2d-datasets/). The first subset of raw images consist of 93 brightfield images:
+As an example we can use the Dataset _"HeLa cells stably expressing H2b-GFP"_  from [celltrackingchallenge.net](http://celltrackingchallenge.net/2d-datasets/). The first subset of raw images consist of 92 brightfield images:
 
 ![raw images](imgs/original.png)
 
