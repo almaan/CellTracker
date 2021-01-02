@@ -1,7 +1,7 @@
 # Multiobject Tracking of Biological Cells using a GM-PHD filter 
 
 This repository contains code for an implementation of the GM-PHD filter
-proposed by _Vo and Ma_ ([https://ieeexplore.ieee.org/document/1710358](link)),
+proposed by _Vo and Ma_ ([REF](https://ieeexplore.ieee.org/document/1710358)),
 with some slight modifications, designed to enable multiobject tracking of cells
 from brightfield images. While code to extract cell positions - the
 measurements - is provided, this is utilize a very simplistic strategy which
